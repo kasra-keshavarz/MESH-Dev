@@ -1,2 +1,6 @@
+# Debug stuff
 *.o
 *.mod
+
+# VSCode stuff
+.vscode/
