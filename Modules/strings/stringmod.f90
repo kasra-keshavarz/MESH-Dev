@@ -394,21 +394,26 @@ end function lowercase
 
 subroutine readline(nunitr,line,ios)
 
-! Reads line from unit=nunitr, ignoring blank lines
-! and deleting comments beginning with an exclamation point(!)
+  ! Reads line from unit=nunitr, ignoring blank lines
+  ! and deleting comments beginning with an exclamation point(!)
 
-character (len=*):: line
+  character (len=*):: line
 
-do  
-  read(nunitr,'(a)', iostat=ios) line      ! read input line
-  if(ios /= 0) return
-  line=adjustl(line)
-  ipos=index(line,'!')
-  if(ipos == 1) cycle
-  if(ipos /= 0) line=line(:ipos-1)
-  if(len_trim(line) /= 0) exit
-end do
-return
+  do  
+    read(nunitr,'(a)', iostat=ios) line      ! read input line
+
+    if(ios /= 0) return
+      line=adjustl(line)
+      ipos=index(line,'!')
+    if(ipos == 1) cycle
+
+    if(ipos /= 0) line=line(:ipos-1)
+
+    if(len_trim(line) /= 0) exit
+
+  end do
+  
+  return
 
 end subroutine readline
 

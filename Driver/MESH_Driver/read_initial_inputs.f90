@@ -25,15 +25,15 @@ subroutine READ_INITIAL_INPUTS(fls, shd, release, ierr)
     real, dimension(:, :), allocatable :: grid
     character(len = DEFAULT_LINE_LENGTH) line, field
     character(len = DEFAULT_FIELD_LENGTH), dimension(50) :: args
-!>>fews
+    !>>fews
     logical ltest
-!<<fews
-!>>
+    !<<fews
+    !>>
     type(io_file) :: basin_database
     real, allocatable :: dat1_r(:)
     integer, allocatable :: dat1_i(:)
     character(len = SHORT_FIELD_LENGTH), allocatable :: dim_names(:)
-!<<
+    !<<
 
     !> SUBBASINFLAG.
     integer, dimension(:), allocatable :: SUBBASIN

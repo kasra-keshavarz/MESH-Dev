@@ -10,7 +10,11 @@ subroutine READ_RUN_OPTIONS(fls, shd, ierr)
     use date_utilities, only: jday_to_date
 
     use FLAGS
-    use input_forcing, only: parse_basinforcingflag, forcing_file_hourly_flag_override, forcing_file_temporal_interpolation
+    use input_forcing, only: &
+        parse_basinforcingflag, &
+        forcing_file_hourly_flag_override, &
+        forcing_file_temporal_interpolation, &
+        forcing_files_list
     use save_basin_output, only: &
         BASINAVGWBFILEFLAG, BASINAVGEBFILEFLAG, BASINAVGEVPFILEFLAG, BASINSWEOUTFLAG, STREAMFLOWOUTFLAG, REACHOUTFLAG
     use RUNCLASS36_variables
@@ -20,7 +24,7 @@ subroutine READ_RUN_OPTIONS(fls, shd, ierr)
     use cropland_irrigation_variables
     use WF_ROUTE_config
     use rte_module
-!-    use SA_RTE_module, only: SA_RTE_flgs
+    !- use SA_RTE_module, only: SA_RTE_flgs
     use SIMSTATS_config, only: mtsflg
     use PBSM_module
     use mountain_module
@@ -215,7 +219,7 @@ subroutine READ_RUN_OPTIONS(fls, shd, ierr)
     !> If enabled, saves the SCA and SWE output files.
     !>     0 = Create no output.
     !>     1 = Save the SCA and SWE output files.
-!-    BASINSWEOUTFLAG = 0
+    !-    BASINSWEOUTFLAG = 0
 
     !> RESERVOIR FLAG TO HANDLED WICH KIND OF RESERVOIR DO WE APPLY
     !>  0 = Non Reservoir is present
@@ -375,6 +379,12 @@ subroutine READ_RUN_OPTIONS(fls, shd, ierr)
                     call parse_basinforcingflag(trim(line), error_status = z)
                 case ('BASINRECHARGEFLAG')
                     call parse_basinforcingflag(trim(line), error_status = z)
+                !> forcing_files_list is defined in the `input_forcing.f90` module file.
+                case ('FORCINGLIST')
+                    if (.not. allocated(forcing_files_list)) then
+                        allocate(forcing_files_list(1))
+                        forcing_files_list%list_file%full_path = trim(adjustl(args(2))) // '.txt'
+                    end if
 
                 case ('STREAMFLOWFILEFLAG')
                     fms%stmg%qomeas%fls%ffmt = adjustl(args(2))
@@ -423,15 +433,15 @@ subroutine READ_RUN_OPTIONS(fls, shd, ierr)
                     call value(args(2), METRICSINCLUDESPINUP, z)
                 case ('FROZENSOILINFILFLAG')
                     call value(args(2), FROZENSOILINFILFLAG, z)
-!-                case ('PRINTRFFR2CFILEFLAG')
-!-                    call value(args(2), SA_RTE_flgs%PRINTRFFR2CFILEFLAG, z)
-!-                    SA_RTE_flgs%PROCESS_ACTIVE = (SA_RTE_flgs%PRINTRFFR2CFILEFLAG == 1)
-!-                case ('PRINTRCHR2CFILEFLAG')
-!-                    call value(args(2), SA_RTE_flgs%PRINTRCHR2CFILEFLAG, z)
-!-                    SA_RTE_flgs%PROCESS_ACTIVE = (SA_RTE_flgs%PRINTRCHR2CFILEFLAG == 1)
-!-                case ('PRINTLKGR2CFILEFLAG')
-!-                    call value(args(2), SA_RTE_flgs%PRINTLKGR2CFILEFLAG, z)
-!-                    SA_RTE_flgs%PROCESS_ACTIVE = (SA_RTE_flgs%PRINTLKGR2CFILEFLAG == 1)
+                !-   case ('PRINTRFFR2CFILEFLAG')
+                !-       call value(args(2), SA_RTE_flgs%PRINTRFFR2CFILEFLAG, z)
+                !-       SA_RTE_flgs%PROCESS_ACTIVE = (SA_RTE_flgs%PRINTRFFR2CFILEFLAG == 1)
+                !-   case ('PRINTRCHR2CFILEFLAG')
+                !-       call value(args(2), SA_RTE_flgs%PRINTRCHR2CFILEFLAG, z)
+                !-       SA_RTE_flgs%PROCESS_ACTIVE = (SA_RTE_flgs%PRINTRCHR2CFILEFLAG == 1)
+                !-   case ('PRINTLKGR2CFILEFLAG')
+                !-       call value(args(2), SA_RTE_flgs%PRINTLKGR2CFILEFLAG, z)
+                !-       SA_RTE_flgs%PROCESS_ACTIVE = (SA_RTE_flgs%PRINTLKGR2CFILEFLAG == 1)
                 case('PRINTRFFR2CFILEFLAG', 'PRINTRCHR2CFILEFLAG', 'PRINTLKGR2CFILEFLAG')
                     call print_screen( &
                         "ERROR: The '" // trim(args(1)) // "' control flag is not supported. Create the outputs using " // &

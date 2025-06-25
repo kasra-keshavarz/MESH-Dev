@@ -128,19 +128,21 @@ program RUNMESH
     !* NML: Temporary store for the number of active land elements (NA, NTYPE).
     !* NSL: Temporary store for the number of soil layers.
     !* iun: Temporary store for the unit number of a file.
-!-    integer NA, NTYPE, NML, NSL, iun, ignd
+    !-    integer NA, NTYPE, NML, NSL, iun, ignd
 
-!todo: clean up comments and arrange variables a bit better
+    !todo: clean up comments and arrange variables a bit better
 
-!> START ENSIM == FOR ENSIM == FOR ENSIM == FOR ENSIM ==
-!-    integer ensim_month, ensim_day
-!-    integer WFO_SEQ
-!> == ENSIM == ENSIM == ENSIM == ENSIM == ENSIM ==
+    !> START ENSIM == FOR ENSIM == FOR ENSIM == FOR ENSIM ==
+    !-    integer ensim_month, ensim_day
+    !-    integer WFO_SEQ
+    !> == ENSIM == ENSIM == ENSIM == ENSIM == ENSIM ==
 
+    !> counter variables
     integer iun, i, j, k, l, m, u, z
     character(len = DEFAULT_LINE_LENGTH) line
-
-!-    integer FRAME_NO_NEW
+    ! Add these declarations before you use the variables
+    character(len=4) :: year_str
+    character(len=2) :: month_str, day_str, hour_str, min_str
 
     !> Logicals to control simulation runs.
     !*  ENDDATE: Signals reached simulation end date.
@@ -159,23 +161,24 @@ program RUNMESH
         TOTAL_PRE_r4, TOTAL_EVAP_r4, TOTAL_ROF_r4, TOTAL_ROFO_r4, TOTAL_ROFS_r4, TOTAL_ROFB_r4, &
         STG_INI_r4
     real(kind = 4), dimension(:), allocatable :: qomeas_val_r4, grid_qo_stmg_r4
-!-    real TOTAL_PRE, TOTAL_EVAP, TOTAL_ROF, STG_INI, STG_FIN, TOTAL_ROFO, TOTAL_ROFS, TOTAL_ROFB
+    !-    real TOTAL_PRE, TOTAL_EVAP, TOTAL_ROF, STG_INI, STG_FIN, TOTAL_ROFO, TOTAL_ROFS, TOTAL_ROFB
 
     !> End of run states for prognostic variables.
-!-    real, dimension(:, :), allocatable :: tcan, rcan, sncan, gro, zpnd, tpnd, sno, tsno, albs, rhos
-!-    real, dimension(:, :, :), allocatable :: tbar, thlq, thic
-!-    integer, dimension(:), allocatable :: kc
-!-    character cfmt*3, cfmtt*1000
+    !-    real, dimension(:, :), allocatable :: tcan, rcan, sncan, gro, zpnd, tpnd, sno, tsno, albs, rhos
+    !-    real, dimension(:, :, :), allocatable :: tbar, thlq, thic
+    !-    integer, dimension(:), allocatable :: kc
+    !-    character cfmt*3, cfmtt*1000
 
-!-    logical R2COUTPUT
-!-    integer, parameter :: R2CFILEUNITSTART = 500
-!-    integer NR2C, DELTR2C, NR2CFILES, NR2CSTATES, NR2C_R, DELTR2C_R, NR2C_S, DELTR2C_S
-!-    integer, allocatable, dimension(:) :: GRD, GAT, GRDGAT, GRD_R, GAT_R, GRDGAT_R, GRD_S, GAT_S, GRDGAT_S
-!-    character(50), allocatable, dimension(:, :) :: R2C_ATTRIBUTES, R2C_ATTRIBUTES_R, R2C_ATTRIBUTES_S
+    !-    logical R2COUTPUT
+    !-    integer, parameter :: R2CFILEUNITSTART = 500
+    !-    integer NR2C, DELTR2C, NR2CFILES, NR2CSTATES, NR2C_R, DELTR2C_R, NR2C_S, DELTR2C_S
+    !-    integer, allocatable, dimension(:) :: GRD, GAT, GRDGAT, GRD_R, GAT_R, GRDGAT_R, GRD_S, GAT_S, GRDGAT_S
+    !-    character(50), allocatable, dimension(:, :) :: R2C_ATTRIBUTES, R2C_ATTRIBUTES_R, R2C_ATTRIBUTES_S
 
     !> Variables for program run times.
     real startprog, endprog
     integer dat(8)
+    integer :: fpos
 
     !> For reading arguments from the command line.
     character(500) fl_listMesh
@@ -185,6 +188,7 @@ program RUNMESH
     !> Set program start time.
     call cpu_time(startprog)
     call date_and_time(values = dat)
+    !> System's date and time values for year, month, day, joulian day, hour, and minutes
     ic%run_start%year = dat(1)
     ic%run_start%month = dat(2)
     ic%run_start%day = dat(3)
@@ -234,7 +238,7 @@ program RUNMESH
         end if
         call Init_fls(fls, trim(adjustl(fl_listMesh)))
     else
-!todo: Call this anyway, make loading values from file an alternate subroutine of module_files
+        !todo: Call this anyway, make loading values from file an alternate subroutine of module_files
         call Init_fls(fls)
     end if !(narg > 0) then
 
@@ -251,10 +255,24 @@ program RUNMESH
     end if
 
     !> Assign shed values to local variables.
-!    NA = shd%NA
-!    NTYPE = shd%lc%NTYPE
-!    NSL = shd%lc%IGND
-!    NML = shd%lc%NML
+    !    NA = shd%NA
+    !    NTYPE = shd%lc%NTYPE
+    !    NSL = shd%lc%IGND
+    !    NML = shd%lc%NML
+
+    !> Initialize forcing files list, if provided
+    if (allocated(forcing_files_list)) then
+        !> Assign the position of the first forcing file to be read to `fpos`.
+        fpos = 1
+        !> Read the forcing files and assign the first file in the list as
+        !> the forcing file to be used for the initialization process.
+        call read_forcing_files_list(fpos=fpos, error_status=ierr)
+        !> If there is any issues, abort.
+        if (ierr /= 0) then
+            call print_error("Errors occurred reading the forcing files list.")
+            call program_abort()
+        end if
+    end if
 
     !> Initialize climate forcing module.
     if (ro%RUNCLIM) then
@@ -311,10 +329,6 @@ program RUNMESH
     end if
 
     !> Allocate output variables for run totals.
-!-    call output_variables_activate( &
-!-        out%tot%grid, (/ &
-!-            VN_DUMMY_LENGTH, VN_PREC, VN_ET, VN_ROF, VN_OVRFLW, VN_LATFLW, VN_DRAINSOL, &
-!-            VN_LQWSCAN, VN_FZWSCAN, VN_SNO, VN_LQWSSNO, VN_LQWSPND, VN_STGGW, VN_LQWSSOL, VN_FZWSSOL /))
     call output_variables_activate(&
         out%tot%basin, (/ VN_DUMMY_LENGTH, VN_PREC, VN_ET, VN_ROF, VN_OVRFLW, VN_LATFLW, VN_DRAINSOL, VN_STGW /))
 
@@ -325,16 +339,6 @@ program RUNMESH
     end if
     if (ro%RUNGRID) call run_between_grid_init(fls, shd)
 
-    !> Initialize basin totals for the run.
-!-    if (ISHEADNODE) then
-!-        TOTAL_PRE = 0.0
-!-        TOTAL_EVAP = 0.0
-!-        TOTAL_ROF = 0.0
-!-        TOTAL_ROFO = 0.0
-!-        TOTAL_ROFS = 0.0
-!-        TOTAL_ROFB = 0.0
-!-    end if
-
     !> Open output files.
     if (ISHEADNODE) then
         call output_files_init(fls, shd)
@@ -343,487 +347,8 @@ program RUNMESH
 
     if (ISHEADNODE .and. mtsflg%AUTOCALIBRATIONFLAG > 0) call stats_init(fls)
 
-    !> Read resume configuration.
-!?    call resumerun_config(fls, shd, ierr)
-!?    if (ierr /= 0) call program_abort()
-
     !> Read resume files.
     call resumerun_read(fls, shd, ierr)
-
-!-    FRAME_NO_NEW = 1
-
-!    if (ISHEADNODE) then
-
-    !> ******************************************************
-    !> echo print information to MESH_output_echo_print.txt
-    !> ******************************************************
-
-!        if (ECHOTXTMODE) then
-!            write(ECHO_TXT_IUN, *)
-!            write(ECHO_TXT_IUN, "('MESH_input_run_options.ini')")
-!            write(ECHO_TXT_IUN, *)
-!            write(ECHO_TXT_IUN, "('Configuration flags - specified by user or default values')")
-
-!todo: this list should be updated (dgp: 2015-01-09)
-!-            write(ECHO_TXT_IUN, *) 'RESUMEFLAG           = ', RESUMEFLAG
-!-            write(ECHO_TXT_IUN, *) 'SAVERESUMEFLAG       = ', SAVERESUMEFLAG
-!            write(ECHO_TXT_IUN, *) 'SHDFILEFLAG          = ', SHDFILEFMT
-!            write(ECHO_TXT_IUN, *) 'SOILINIFLAG          = ', SOILINIFLAG
-!            write(ECHO_TXT_IUN, *) 'PREEMPTIONFLAG       = ', mtsflg%PREEMPTIONFLAG
-!            write(ECHO_TXT_IUN, *) 'SUBBASINFLAG         = ', SUBBASINFLAG
-!            write(ECHO_TXT_IUN, *) 'R2COUTPUTFLAG        = ', R2COUTPUTFLAG
-!            write(ECHO_TXT_IUN, *) 'OBJFNFLAG            = ', OBJFNFLAG
-!            write(ECHO_TXT_IUN, *) 'AUTOCALIBRATIONFLAG  = ', mtsflg%AUTOCALIBRATIONFLAG
-!            write(ECHO_TXT_IUN, *) 'WINDOWSIZEFLAG       = ', WINDOWSIZEFLAG
-!            write(ECHO_TXT_IUN, *) 'WINDOWSPACINGFLAG    = ', WINDOWSPACINGFLAG
-!            write(ECHO_TXT_IUN, *) 'FROZENSOILINFILFLAG  = ', FROZENSOILINFILFLAG
-
-!todo: restore this.
-!            write(ECHO_TXT_IUN, *)
-!            write(ECHO_TXT_IUN, "('MESH_parameters_hydrology.ini')")
-!            write(ECHO_TXT_IUN, *)
-!            write(ECHO_TXT_IUN, "('River roughnesses:')")
-!todo: change this to use NRVR.
-!            write(ECHO_TXT_IUN, '(5f6.3)') (WF_R2(i), i = 1, 5)
-!            write(ECHO_TXT_IUN, "('Land class independent hydrologic parameters:')")
-!            if (FROZENSOILINFILFLAG == 1) then
-!                write(ECHO_TXT_IUN, *) 'SOIL_POR_MAX = ', SOIL_POR_MAX
-!                write(ECHO_TXT_IUN, *) 'SOIL_DEPTH   = ', SOIL_DEPTH
-!                write(ECHO_TXT_IUN, *) 'S0           = ', S0
-!                write(ECHO_TXT_IUN, *) 'T_ICE_LENS   = ', T_ICE_LENS
-!                do i = 5, INDEPPAR
-!                    j = i - 4
-!                    write(ECHO_TXT_IUN, '(a38, i2, a3, f6.2)') 'OPPORTUNITY TIME FOR SIMULATION YEAR ', j, ' = ', t0_ACC(j)
-!                end do
-!            else
-!                do i = 1, INDEPPAR
-!                    write(ECHO_TXT_IUN, '(a36, i2, a19)') 'FROZEN SOIL INFILTRATION PARAMETER ', i, ' READ BUT NOT USED'
-!                end do
-!            end if !(FROZENSOILINFILFLAG == 1) then
-!            write(ECHO_TXT_IUN, "('Land class dependent hydrologic parameters:')")
-!            write(NMTESTFORMAT, "(a10, i3, 'f10.2)')") "('ZSNLROW'", shd%lc%NTYPE
-!            write(ECHO_TXT_IUN, NMTESTFORMAT) (hp%ZSNLROW(1, m), m = 1, shd%lc%NTYPE)
-!            write(NMTESTFORMAT, "(a10, i3, 'f10.2)')") "('ZPLSROW'", shd%lc%NTYPE
-!            write(ECHO_TXT_IUN, NMTESTFORMAT) (hp%ZPLSROW(1, m), m = 1, shd%lc%NTYPE)
-!            write(NMTESTFORMAT, "(a10, i3, 'f10.2)')") "('ZPLGROW'", shd%lc%NTYPE
-!            write(ECHO_TXT_IUN, NMTESTFORMAT) (hp%ZPLGROW(1, m), m = 1, shd%lc%NTYPE)
-!            if (DEPPAR >= 4) then
-!                write(NMTESTFORMAT, "(a10, i3, 'f10.2)')") "('FRZCROW'", shd%lc%NTYPE
-!                write(ECHO_TXT_IUN, NMTESTFORMAT) (hp%FRZCROW(1, m), m = 1, shd%lc%NTYPE)
-!            end if
-!            write(ECHO_TXT_IUN, *)
-!            write(ECHO_TXT_IUN, "('MESH_parameters_CLASS.ini')")
-!            write(ECHO_TXT_IUN, *)
-!            write(ECHO_TXT_IUN, '(2x, 6a4)') TITLE1, TITLE2, TITLE3, TITLE4, TITLE5, TITLE6
-!            write(ECHO_TXT_IUN, '(2x, 6a4)') NAME1, NAME2, NAME3, NAME4, NAME5, NAME6
-!            write(ECHO_TXT_IUN, '(2x, 6a4)') PLACE1, PLACE2, PLACE3, PLACE4, PLACE5, PLACE6
-!            i = 1
-!            write(ECHO_TXT_IUN, '(5f10.2, f7.1, 3i5)') &
-!                DEGLAT, DEGLON, cp%ZRFMGRD(i), cp%ZRFHGRD(i), cp%ZBLDGRD(i), cp%GCGRD(i), shd%wc%ILG, shd%NA, shd%lc%NTYPE
-!            do m = 1, shd%lc%NTYPE
-!                write(ECHO_TXT_IUN, '(9f8.3)') (cp%FCANROW(i, m, j), j = 1, ICAN + 1), (cp%PAMXROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(9f8.3)') (cp%LNZ0ROW(i, m, j), j = 1, ICAN + 1), (cp%PAMNROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(9f8.3)') (cp%ALVCROW(i, m, j), j = 1, ICAN + 1), (cp%CMASROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(9f8.3)') (cp%ALICROW(i, m, j), j = 1, ICAN + 1), (cp%ROOTROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(4f8.3, 8x, 4f8.3)') (cp%RSMNROW(i, m, j), j = 1, ICAN), (cp%QA50ROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(4f8.3, 8x, 4f8.3)') (cp%VPDAROW(i, m, j), j = 1, ICAN), (cp%VPDBROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(4f8.3, 8x, 4f8.3)') (cp%PSGAROW(i, m, j), j = 1, ICAN), (cp%PSGBROW(i, m, j), j = 1, ICAN)
-!                write(ECHO_TXT_IUN, '(3f8.3, f8.4)') cp%DRNROW(i, m), cp%SDEPROW(i, m), cp%FAREROW(i, m), cp%DDROW(i, m)
-!                write(ECHO_TXT_IUN, '(4e8.1, i8)') cp%XSLPROW(i, m), cp%XDROW(i, m), cp%MANNROW(i, m), cp%KSROW(i, m), cp%MIDROW(i, m)
-!                write(ECHO_TXT_IUN, '(6f10.1)') (cp%SANDROW(i, m, j), j = 1, shd%lc%IGND)
-!                write(ECHO_TXT_IUN, '(6f10.1)') (cp%CLAYROW(i, m, j), j = 1, shd%lc%IGND)
-!                write(ECHO_TXT_IUN, '(6f10.1)') (cp%ORGMROW(i, m, j), j = 1, shd%lc%IGND)
-!                write(ECHO_TXT_IUN, '(9f10.2)') (cp%TBARROW(i, m, j), j = 1, shd%lc%IGND), cp%TCANROW(i, m), cp%TSNOROW(i, m), cp%TPNDROW(i, m)
-!                write(ECHO_TXT_IUN, '(10f10.3)') &
-!                    (cp%THLQROW(i, m, j), j = 1, shd%lc%IGND), (cp%THICROW(i, m, j), j = 1, shd%lc%IGND), cp%ZPNDROW(i, m)
-!                write(ECHO_TXT_IUN, '(2f10.4, f10.2, f10.3, f10.4, f10.3, f10.3)') &
-!                    cp%RCANROW(i, m), cp%SCANROW(i, m), cp%SNOROW(i, m), cp%ALBSROW(i, m), cp%RHOSROW(i, m), cp%GROROW(i, m)
-!                write(ECHO_TXT_IUN, *)
-!            end do !m = 1, shd%lc%NTYPE
-!        end if
-!    end if
-
-    !> Open and print header information to the output files
-    !> Open and read in values from r2c_output.txt file
-!-    if (ISHEADNODE) then
-!-        NR2CFILES = 0
-!-        if (R2COUTPUTFLAG >= 1) then
-!-            inquire(file = 'r2c_output.txt', exist = R2COUTPUT)
-!-            if (R2COUTPUT) then
-!-                open(56, file = 'r2c_output.txt', action = 'read')
-!-                read(56, *, iostat = ierr) NR2C, DELTR2C
-!-                if (ierr == 0) then
-!-                    allocate(GRD(NR2C), GAT(NR2C), GRDGAT(NR2C), R2C_ATTRIBUTES(NR2C, 3), stat = ierr)
-!-                    if (ierr /= 0) then
-!-                        call print_error('Unable to allocate variables for R2C output.')
-!-                        call print_message('Check the value of the first record at the first line in r2c_output.txt.')
-!-                        call print_message('The value should be an integer value greater than zero.')
-!-                        call program_abort()
-!-                    end if
-!-                end if
-!-                if (ierr /= 0 .or. mod(DELTR2C, 30) /= 0) then
-!-                    call print_error('Configuration error in r2c_output.txt')
-!-                    call print_message('The first record at the first line is the number of variables.')
-!-                    call print_message('The second record at the first line is the time-step for output.')
-!-                    call print_message('The time-step should be a multiple of 30.')
-!-                    call program_abort()
-!-                end if
-!-                call print_echo_txt('')
-!-                call print_echo_txt('r2c output will be written for the following fields:')
-!-                do i = 1, NR2C
-!-                    read(56, *, iostat = ierr) GRD(i), GAT(i), GRDGAT(i), (R2C_ATTRIBUTES(i, j), j = 1, 3)
-!-                    if (ierr /= 0) then
-!-                        write(line, FMT_GEN) i + 1
-!-                        call print_error('Error reading record: ' // trim(line))
-!-                        call print_message('The first 3 columns should contain values of 0 or 1.')
-!-                        call print_message('The last 3 columns should contain information about the variable.')
-!-                        call program_abort()
-!-                    else
-!-                        if (GRD(i) == 1) then
-!-                            NR2CFILES = NR2CFILES + 1
-!-                            write(line, "(i3, ' (GRD)    : ', (a))") NR2CFILES, R2C_ATTRIBUTES(i, 3)
-!-                            call print_echo_txt(trim(line))
-!-                        end if
-!-                        if (GAT(i) == 1) then
-!-                            NR2CFILES = NR2CFILES + 1
-!-                            write(line, "(i3, ' (GRD)    : ', (a))") NR2CFILES, R2C_ATTRIBUTES(i, 3)
-!-                            call print_echo_txt(trim(line))
-!-                        end if
-!-                        if (GRDGAT(i) == 1) then
-!-                            NR2CFILES = NR2CFILES + 1
-!-                            write(line, "(i3, ' (GRDGAT) : ', (a))") NR2CFILES, R2C_ATTRIBUTES(i, 3)
-!-                            call print_echo_txt(trim(line))
-!-                        end if
-!-                    end if
-!-                end do
-!-                close(56)
-!-            else
-!-                call print_error('Unable to open: r2c_output.txt')
-!-                call print_message('Check that the file exists or set R2COUTPUTFLAG to zero.')
-!-                call program_abort()
-!-            end if
-!-        end if
-
-        !> WRITE THE HEADER FOR R2C FILES:
-!-        if (NR2CFILES > 0) then
-!-            call WRITE_R2C_HEADER(shd%lc%NTYPE, NR2C, NR2CFILES, GRD, GAT, GRDGAT, R2C_ATTRIBUTES, &
-!-                                  R2CFILEUNITSTART, NR2CSTATES, shd%CoordSys%Proj, shd%CoordSys%Ellips, shd%CoordSys%Zone, &
-!-                                  shd%xOrigin, shd%yOrigin, shd%xDelta, shd%yDelta, shd%xCount, shd%yCount)
-!-        end if
-
-        !> For the ENSIM timestamp
-!-        wfo_seq = 0
-
-!-    end if
-
-    !> RESUME/SAVERESUME 1 or 2 are not supported.
-!-    if (RESUMEFLAG == 1 .or. SAVERESUMEFLAG == 1 .or. RESUMEFLAG == 2 .or. SAVERESUMEFLAG == 2) then
-!-        write(line, "('RESUMEFLAG ', i1, ' and SAVERESUMEFLAG ', i1, ' are not supported.')") RESUMEFLAG, SAVERESUMEFLAG
-!-        call print_error(line)
-!-        call print_message('Use RESUMEFLAG 4 and SAVERESUMEFLAG 4 instead.')
-!-        call program_abort()
-!-    end if
-
-!> ********************************************************************
-!> RESUMEFLAG
-!> ********************************************************************
-
-      !> Check if we are reading in a resume_state.r2c file
-!-    if (RESUMEFLAG == 2) then
-!-        call print_message('Reading saved state variables')
-
-          !> Allocate arrays for resume_state_r2c
-!-        open(54, file = 'resume_state_r2c.txt', action = 'read')
-!-        read(54, *, iostat = ierr) NR2C_R, DELTR2C_R
-!-        if (ierr == 0) then
-!-            allocate(GRD_R(NR2C_R), GAT_R(NR2C_R), GRDGAT_R(NR2C_R), R2C_ATTRIBUTES_R(NR2C_R, 3), stat = ierr)
-!-            if (ierr /= 0) then
-!-                call print_error('Unable to allocate variables for RESUMESTATE 2.')
-!-                call print_message('Check the value of the first record at the first line in resume_state_r2c.txt.')
-!-                call print_message('The value should be an integer value greater than zero.')
-!-                call program_abort()
-!-            end if
-!-        end if
-!-        close(54)
-
-         !> start by gathering from ROW to GAT so as not to mess-up with CLASSS after call to save_state_r2c
-!-        call CLASSG (cpv%TBAR, cpv%THLQ, cpv%THIC, cpv%TPND, cpv%ZPND, &
-!-                     cpv%TBAS, cpv%ALBS, cpv%TSNO, cpv%RHOS, cpv%SNO, &
-!-                     cpv%TCAN, cpv%RCAN, cpv%SNCAN, cpv%GRO, FRZCGAT, cpv%CMAI, &
-!-                     csfv%FCAN, csfv%LNZ0, csfv%ALVC, csfv%ALIC, csfv%PAMX, &
-!-                     csfv%PAMN, csfv%CMAS, csfv%ROOT, csfv%RSMN, csfv%QA50, &
-!-                     csfv%VPDA, csfv%VPDB, csfv%PSGA, csfv%PSGB, csfv%PAID, &
-!-                     csfv%HGTD, csfv%ACVD, csfv%ACID, cpv%TSFS, cpv%WSNO, &
-!-                     csfv%THP, csfv%THR, csfv%THM, csfv%BI, csfv%PSIS, &
-!-                     csfv%GRKS, csfv%THRA, csfv%HCPS, csfv%TCS, csfv%IGDR, &
-!-                     csfv%THFC, csfv%PSIW, csfv%DELZW, csfv%ZBTW, cfi%VMOD, &
-!-                     csfv%ZSNL, csfv%ZPLG, csfv%ZPLS, cpv%TAC, cpv%QAC, &
-!-                     csfv%DRN, csfv%XSLP, XDGAT, csfv%WFSF, KSGAT, &
-!-                     csfv%ALGW, csfv%ALGD, csfv%ASVD, csfv%ASID, csfv%AGVD, &
-!-                     csfv%AGID, csfv%ISND, catv%RADJ, catv%ZBLD, catv%Z0OR, &
-!-                     catv%ZRFM, catv%ZRFH, catv%ZDM, catv%ZDH, cfi%FSVH, &
-!-                     cfi%FSIH, catv%CSZ, cfi%FDL, cfi%UL, cfi%VL, &
-!-                     cfi%TA, cfi%QA, cfi%PRES, cfi%PRE, catv%PADR, &
-!-                     catv%VPD, catv%TADP, catv%RHOA, catv%RPCP, catv%TRPC, &
-!-                     catv%SPCP, catv%TSPC, catv%RHSI, catv%FCLO, catv%DLON, &
-!-                     catv%GGEO, &
-!-                     cdv%CDH, cdv%CDM, cdv%HFS, cdv%TFX, cdv%QEVP, &
-!-                     cdv%QFS, cdv%QFX, cdv%PET, cdv%GA, cdv%EF, &
-!-                     cdv%GTE, cdv%QG, cdv%ALVS, cdv%ALIR, &
-!-                     cdv%SFCT, cdv%SFCU, cdv%SFCV, cdv%SFCQ, cdv%FSNO, &
-!-                     cdv%FSGV, cdv%FSGS, cdv%FSGG, cdv%FLGV, cdv%FLGS, &
-!-                     cdv%FLGG, cdv%HFSC, cdv%HFSS, cdv%HFSG, cdv%HEVC, &
-!-                     cdv%HEVS, cdv%HEVG, cdv%HMFC, cdv%HMFN, cdv%HTCC, &
-!-                     cdv%HTCS, cdv%PCFC, cdv%PCLC, cdv%PCPN, cdv%PCPG, &
-!-                     cdv%QFG, cdv%QFN, cdv%QFCL, cdv%QFCF, cdv%ROF, &
-!-                     cdv%ROFO, cdv%ROFS, cdv%ROFB, cdv%TROF, cdv%TROO, &
-!-                     cdv%TROS, cdv%TROB, cdv%ROFC, cdv%ROFN, cdv%ROVG, &
-!-                     cdv%WTRC, cdv%WTRS, cdv%WTRG, cdv%DR, cdv%GFLX, &
-!-                     cdv%HMFG, cdv%HTC, cdv%QFC, ITCTGAT, &
-!BEGIN: PDMROF
-!-                     CMINPDM, CMAXPDM, BPDM, K1PDM, K2PDM, &
-!END: PDMROF
-!-                     shd%lc%ILMOS, shd%lc%JLMOS, shd%wc%ILMOS, shd%wc%JLMOS, shd%NA, shd%lc%NTYPE, &
-!-                     shd%lc%NML, il1, il2, shd%lc%IGND, ICAN, ICP1, cp%TBARROW, cp%THLQROW, &
-!-                     cp%THICROW, cp%TPNDROW, cp%ZPNDROW, TBASROW, cp%ALBSROW, &
-!-                     cp%TSNOROW, cp%RHOSROW, cp%SNOROW, cp%TCANROW, &
-!-                     cp%RCANROW, cp%SCANROW, cp%GROROW, CMAIROW, cp%FCANROW, &
-!-                     cp%LNZ0ROW, cp%ALVCROW, cp%ALICROW, cp%PAMXROW, &
-!-                     cp%PAMNROW, cp%CMASROW, cp%ROOTROW, cp%RSMNROW, &
-!-                     cp%QA50ROW, cp%VPDAROW, cp%VPDBROW, cp%PSGAROW, &
-!-                     cp%PSGBROW, PAIDROW, HGTDROW, ACVDROW, ACIDROW, TSFSROW, &
-!-                     WSNOROW, THPROW, THRROW, THMROW, BIROW, PSISROW, &
-!-                     GRKSROW, THRAROW, HCPSROW, TCSROW, IGDRROW, &
-!-                     THFCROW, PSIWROW, DLZWROW, ZBTWROW, VMODGRD, &
-!-                     hp%ZSNLROW, hp%ZPLGROW, hp%ZPLSROW, hp%FRZCROW, TACROW, QACROW, &
-!-                     cp%DRNROW, cp%XSLPROW, cp%XDROW, WFSFROW, cp%KSROW, &
-!-                     ALGWROW, ALGDROW, ASVDROW, ASIDROW, AGVDROW, &
-!-                     AGIDROW, ISNDROW, RADJGRD, cp%ZBLDGRD, Z0ORGRD, &
-!-                     cp%ZRFMGRD, cp%ZRFHGRD, ZDMGRD, ZDHGRD, vs%grid%fsin/2.0, &
-!-                     vs%grid%fsin/2.0, CSZGRD, vs%grid%flin, vs%grid%uv, VLGRD, &
-!-                     vs%grid%ta, vs%grid%qa, vs%grid%pres, &
-!-                     vs%grid%pre, PADRGRD, &
-!-                     VPDGRD, TADPGRD, RHOAGRD, RPCPGRD, TRPCGRD, &
-!-                     SPCPGRD, TSPCGRD, RHSIGRD, FCLOGRD, DLONGRD, &
-!-                     GGEOGRD, cp%MANNROW, MANNGAT, cp%DDROW, DDGAT, &
-!-                     cp%SANDROW, csfv%SAND, cp%CLAYROW, csfv%CLAY, &
-!BEGIN: PDMROF
-!-                     hp%CMINROW, hp%CMAXROW, hp%BROW, hp%K1ROW, hp%K2ROW, &
-!END: PDMROF
-!-                     cp%FAREROW, csfv%FARE, &
-!-                     hp%fetchROW, hp%HtROW, hp%N_SROW, hp%A_SROW, hp%DistribROW, &
-!-                     fetchGAT, HtGAT, N_SGAT, A_SGAT, DistribGAT, &
-!-                     DrySnowRow, SnowAgeROW, DrySnowGAT, SnowAgeGAT, &
-!-                     TSNOdsROW, RHOSdsROW, TSNOdsGAT, RHOSdsGAT, &
-!-                     DriftROW, SublROW, DepositionROW, &
-!-                     DriftGAT, SublGAT, DepositionGAT)
-
-!-        cdv%CDH = 0.0
-!-        cdv%CDM = 0.0
-!-        cdv%HFS = 0.0
-!-        cdv%TFX = 0.0
-!-        cdv%QEVP = 0.0
-!-        cdv%QFS = 0.0
-!-        cdv%QFX = 0.0
-!-        cdv%PET = 0.0
-!-        cdv%GA = 0.0
-!-        cdv%EF = 0.0
-!-        cdv%GTE = 0.0
-!-        cdv%QG = 0.0
-!-        cdv%ALVS = 0.0
-!-        cdv%ALIR = 0.0
-!-        cdv%SFCT = 0.0
-!-        cdv%SFCU = 0.0
-!-        cdv%SFCV = 0.0
-!-        cdv%SFCQ = 0.0
-!-        cdv%FSNO = 0.0
-!-        cdv%FSGV = 0.0
-!-        cdv%FSGS = 0.0
-!-        cdv%FSGG = 0.0
-!-        cdv%FLGV = 0.0
-!-        cdv%FLGS = 0.0
-!-        cdv%FLGG = 0.0
-!-        cdv%HFSC = 0.0
-!-        cdv%HFSS = 0.0
-!-        cdv%HFSG = 0.0
-!-        cdv%HEVC = 0.0
-!-        cdv%HEVS = 0.0
-!-        cdv%HEVG = 0.0
-!-        cdv%HMFC = 0.0
-!-        cdv%HMFN = 0.0
-!-        cdv%HTCC = 0.0
-!-        cdv%HTCS = 0.0
-!-        cdv%PCFC = 0.0
-!-        cdv%PCLC = 0.0
-!-        cdv%PCPN = 0.0
-!-        cdv%PCPG = 0.0
-!-        cdv%QFG = 0.0
-!-        cdv%QFN = 0.0
-!-        cdv%QFCF = 0.0
-!-        cdv%QFCL = 0.0
-!-        cdv%ROF = 0.0
-!-        cdv%ROFO = 0.0
-!-        cdv%ROFS = 0.0
-!-        cdv%ROFB = 0.0
-!-        cdv%TROF = 0.0
-!-        cdv%TROO = 0.0
-!-        cdv%TROS = 0.0
-!-        cdv%TROB = 0.0
-!-        cdv%ROFC = 0.0
-!-        cdv%ROFN = 0.0
-!-        cdv%ROVG = 0.0
-!-        cdv%WTRC = 0.0
-!-        cdv%WTRS = 0.0
-!-        cdv%WTRG = 0.0
-!-        cdv%DR = 0.0
-!-        cdv%HMFG = 0.0
-!-        cdv%HTC = 0.0
-!-        cdv%QFC = 0.0
-!-        cdv%GFLX = 0.0
-!-        ITCTGAT = 0
-
-!-        call resume_state_r2c(shd%lc%NML, shd%NA, shd%lc%NTYPE, ic%ts_daily, &
-!-                              ic%now%mins, shd%lc%ACLASS, NR2C_R, GRD_R, GAT_R, GRDGAT_R, R2C_ATTRIBUTES_R, &
-!-                              shd%NA, shd%xxx, shd%yyy, shd%xCount, shd%yCount, shd%lc%ILMOS, shd%lc%JLMOS, shd%lc%NML, ICAN, ICP1, shd%lc%IGND, &
-!-                              cpv%TBAR, cpv%THLQ, cpv%THIC, cpv%TPND, cpv%ZPND, &
-!-                              cpv%TBAS, cpv%ALBS, cpv%TSNO, cpv%RHOS, cpv%SNO, &
-!-                              cpv%TCAN, cpv%RCAN, cpv%SNCAN, cpv%GRO, cpv%CMAI, &
-!-                              csfv%FCAN, csfv%LNZ0, csfv%ALVC, csfv%ALIC, csfv%PAMX, &
-!-                              csfv%PAMN, csfv%CMAS, csfv%ROOT, csfv%RSMN, csfv%QA50, &
-!-                              csfv%VPDA, csfv%VPDB, csfv%PSGA, csfv%PSGB, csfv%PAID, &
-!-                              csfv%HGTD, csfv%ACVD, csfv%ACID, cpv%TSFS, cpv%WSNO, &
-!-                              csfv%THP, csfv%THR, csfv%THM, csfv%BI, csfv%PSIS, &
-!-                              csfv%GRKS, csfv%THRA, csfv%HCPS, csfv%TCS, &
-!-                              csfv%THFC, csfv%PSIW, csfv%DELZW, csfv%ZBTW, &
-!-                              csfv%ZSNL, csfv%ZPLG, csfv%ZPLS, cpv%TAC, cpv%QAC, &
-!-                              csfv%DRN, csfv%XSLP, XDGAT, csfv%WFSF, KSGAT, &
-!-                              csfv%ALGW, csfv%ALGD, csfv%ASVD, csfv%ASID, csfv%AGVD, &
-!-                              csfv%AGID, csfv%ISND, catv%RADJ, catv%ZBLD, catv%Z0OR, &
-!-                              catv%ZRFM, catv%ZRFH, catv%ZDM, catv%ZDH, cfi%FSVH, &
-!-                              cfi%FSIH, catv%CSZ, cfi%FDL, cfi%UL, cfi%VL, &
-!-                              cfi%TA, cfi%QA, cfi%PRES, cfi%PRE, catv%PADR, &
-!-                              catv%VPD, catv%TADP, catv%RHOA, catv%RPCP, catv%TRPC, &
-!-                              catv%SPCP, catv%TSPC, catv%RHSI, catv%FCLO, catv%DLON, &
-!-                              catv%GGEO, &
-!-                              cdv%CDH, cdv%CDM, cdv%HFS, cdv%TFX, cdv%QEVP, &
-!-                              cdv%QFS, cdv%QFX, cdv%PET, cdv%GA, cdv%EF, &
-!-                              cdv%GTE, cdv%QG, cdv%ALVS, cdv%ALIR, &
-!-                              cdv%SFCT, cdv%SFCU, cdv%SFCV, cdv%SFCQ, cdv%FSNO, &
-!-                              cdv%FSGV, cdv%FSGS, cdv%FSGG, cdv%FLGV, cdv%FLGS, &
-!-                              cdv%FLGG, cdv%HFSC, cdv%HFSS, cdv%HFSG, cdv%HEVC, &
-!-                              cdv%HEVS, cdv%HEVG, cdv%HMFC, cdv%HMFN, cdv%HTCC, &
-!-                              cdv%HTCS, cdv%PCFC, cdv%PCLC, cdv%PCPN, cdv%PCPG, &
-!-                              cdv%QFG, cdv%QFN, cdv%QFCL, cdv%QFCF, cdv%ROF, &
-!-                              cdv%ROFO, cdv%ROFS, cdv%ROFB, cdv%TROF, cdv%TROO, &
-!-                              cdv%TROS, cdv%TROB, cdv%ROFC, cdv%ROFN, cdv%ROVG, &
-!-                              cdv%WTRC, cdv%WTRS, cdv%WTRG, cdv%DR, cdv%GFLX, &
-!-                              cdv%HMFG, cdv%HTC, cdv%QFC, MANNGAT, DDGAT, &
-!-                              csfv%SAND, csfv%CLAY, csfv%IGDR, cfi%VMOD, QLWOGAT, &
-!-                              shd%CoordSys%Proj, shd%CoordSys%Ellips, shd%CoordSys%Zone, &
-!-                              shd%xOrigin, shd%yOrigin, shd%xDelta, shd%yDelta)
-
-         !> now scatter the variables so that the GATs don't get overwritten incorrectly
-!-        call CLASSS(cp%TBARROW, cp%THLQROW, cp%THICROW, GFLXROW, TSFSROW, &
-!-                    cp%TPNDROW, cp%ZPNDROW, TBASROW, cp%ALBSROW, cp%TSNOROW, &
-!-                    cp%RHOSROW, cp%SNOROW, cp%TCANROW, cp%RCANROW, cp%SCANROW, &
-!-                    cp%GROROW, CMAIROW, TACROW, QACROW, WSNOROW, &
-!-                    shd%lc%ILMOS, shd%lc%JLMOS, shd%wc%ILMOS, shd%wc%JLMOS, &
-!-                    shd%NA, shd%lc%NTYPE, shd%lc%NML, il1, il2, shd%lc%IGND, ICAN, ICAN + 1, &
-!-                    cpv%TBAR, cpv%THLQ, cpv%THIC, cdv%GFLX, cpv%TSFS, &
-!-                    cpv%TPND, cpv%ZPND, cpv%TBAS, cpv%ALBS, cpv%TSNO, &
-!-                    cpv%RHOS, cpv%SNO, cpv%TCAN, cpv%RCAN, cpv%SNCAN, &
-!-                    cpv%GRO, cpv%CMAI, cpv%TAC, cpv%QAC, cpv%WSNO, &
-!-                    cp%MANNROW, MANNGAT, cp%DDROW, DDGAT, &
-!-                    cp%SANDROW, csfv%SAND, cp%CLAYROW, csfv%CLAY, cp%XSLPROW, csfv%XSLP, &
-!-                    DrySnowRow, SnowAgeROW, DrySnowGAT, SnowAgeGAT, &
-!-                    TSNOdsROW, RHOSdsROW, TSNOdsGAT, RHOSdsGAT, &
-!-                    DriftROW, SublROW, DepositionROW, &
-!-                    DriftGAT, SublGAT, DepositionGAT)
-
-!-        do 180 k = il1, il2
-!-            ik = shd%lc%ILMOS(k)
-!-            jk = shd%lc%JLMOS(k)
-!-            CDHROW(ik, jk) = cdv%CDH(k)
-!-            CDMROW(ik, jk) = cdv%CDM(k)
-!-            HFSROW(ik, jk) = cdv%HFS(k)
-!-            TFXROW(ik, jk) = cdv%TFX(k)
-!-            QEVPROW(ik, jk) = cdv%QEVP(k)
-!-            QFSROW(ik, jk) = cdv%QFS(k)
-!-            QFXROW(ik, jk) = cdv%QFX(k)
-!-            PETROW(ik, jk) = cdv%PET(k)
-!-            GAROW(ik, jk) = cdv%GA(k)
-!-            EFROW(ik, jk) = cdv%EF(k)
-!-            GTROW(ik, jk) = cdv%GTE(k)
-!-            QGROW(ik, jk) = cdv%QG(k)
-!-            ALVSROW(ik, jk) = cdv%ALVS(k)
-!-            ALIRROW(ik, jk) = cdv%ALIR(k)
-!-            SFCTROW(ik, jk) = cdv%SFCT(k)
-!-            SFCUROW(ik, jk) = cdv%SFCU(k)
-!-            SFCVROW(ik, jk) = cdv%SFCV(k)
-!-            SFCQROW(ik, jk) = cdv%SFCQ(k)
-!-            FSNOROW(ik, jk) = cdv%FSNO(k)
-!-            FSGVROW(ik, jk) = cdv%FSGV(k)
-!-            FSGSROW(ik, jk) = cdv%FSGS(k)
-!-            FSGGROW(ik, jk) = cdv%FSGG(k)
-!-            FLGVROW(ik, jk) = cdv%FLGV(k)
-!-            FLGSROW(ik, jk) = cdv%FLGS(k)
-!-            FLGGROW(ik, jk) = cdv%FLGG(k)
-!-            HFSCROW(ik, jk) = cdv%HFSC(k)
-!-            HFSSROW(ik, jk) = cdv%HFSS(k)
-!-            HFSGROW(ik, jk) = cdv%HFSG(k)
-!-            HEVCROW(ik, jk) = cdv%HEVC(k)
-!-            HEVSROW(ik, jk) = cdv%HEVS(k)
-!-            HEVGROW(ik, jk) = cdv%HEVG(k)
-!-            HMFCROW(ik, jk) = cdv%HMFC(k)
-!-            HMFNROW(ik, jk) = cdv%HMFN(k)
-!-            HTCCROW(ik, jk) = cdv%HTCC(k)
-!-            HTCSROW(ik, jk) = cdv%HTCS(k)
-!-            PCFCROW(ik, jk) = cdv%PCFC(k)
-!-            PCLCROW(ik, jk) = cdv%PCLC(k)
-!-            PCPNROW(ik, jk) = cdv%PCPN(k)
-!-            PCPGROW(ik, jk) = cdv%PCPG(k)
-!-            QFGROW(ik, jk) = cdv%QFG(k)
-!-            QFNROW(ik, jk) = cdv%QFN(k)
-!-            QFCLROW(ik, jk) = cdv%QFCL(k)
-!-            QFCFROW(ik, jk) = cdv%QFCF(k)
-!-            ROFROW(ik, jk) = cdv%ROF(k)
-!-            ROFOROW(ik, jk) = cdv%ROFO(k)
-!-            ROFSROW(ik, jk) = cdv%ROFS(k)
-!-            ROFBROW(ik, jk) = cdv%ROFB(k)
-!-            TROFROW(ik, jk) = cdv%TROF(k)
-!-            TROOROW(ik, jk) = cdv%TROO(k)
-!-            TROSROW(ik, jk) = cdv%TROS(k)
-!-            TROBROW(ik, jk) = cdv%TROB(k)
-!-            ROFCROW(ik, jk) = cdv%ROFC(k)
-!-            ROFNROW(ik, jk) = cdv%ROFN(k)
-!-            ROVGROW(ik, jk) = cdv%ROVG(k)
-!-            WTRCROW(ik, jk) = cdv%WTRC(k)
-!-            WTRSROW(ik, jk) = cdv%WTRS(k)
-!-            WTRGROW(ik, jk) = cdv%WTRG(k)
-!-            DRROW(ik, jk) = cdv%DR(k)
-!-            WTABROW(ik, jk) = cdv%WTAB(k)
-!-            ILMOROW(ik, jk) = cdv%ILMO(k)
-!-            UEROW(ik, jk) = cdv%UE(k)
-!-            HBLROW(ik, jk) = cdv%HBL(k)
-!-180     continue
-
-!-        do 190 l = 1, shd%lc%IGND
-!-            do 190 k = il1, il2
-!-                ik = shd%lc%ILMOS(k)
-!-                jk = shd%lc%JLMOS(k)
-!-                HMFGROW(ik, jk, l) = cdv%HMFG(k, l)
-!-                HTCROW(ik, jk, l) = cdv%HTC(k, l)
-!-                QFCROW(ik, jk, l) = cdv%QFC(k, l)
-!-190     continue
-
-!-        do 230 m = 1, 50
-!-            do 220 l = 1, 6
-!-                do 210 k = il1, il2
-!-                    ITCTROW(shd%lc%ILMOS(k), shd%lc%JLMOS(k), l, m) = ITCTGAT(k, l, m)
-!-210     continue
-!-220     continue
-!-230     continue
-!-    end if !(RESUMEFLAG == 2) then
 
     !> Update initial values.
     ltest = .false.
@@ -838,23 +363,10 @@ program RUNMESH
             if (ISHEADNODE) call program_abort()
         end if
     end if
-!-    if (btest(resume_options%resume%flo%ext, FILE_TYPE_NC4)) then
-!-        call read_initial_states_nc(fls, shd, ierr)
-!-    end if
 
     !> Update output variables with initial states.
     call output_variables_reset(shd)
     call output_variables_update(shd)
-
-    !> Calculate initial storage.
-!-    if (ro%RUNBALWB .and. ISHEADNODE) then
-!-        STG_INI = sum( &
-!-            (out%ts%grid%lqwscan(1:shd%NA) + out%ts%grid%fzwscan(1:shd%NA) + &
-!-             out%ts%grid%sno(1:shd%NA) + out%ts%grid%lqwssno(1:shd%NA) + out%ts%grid%lqwspnd(1:shd%NA) + &
-!-             out%ts%grid%stggw(1:shd%NA) + &
-!-             sum(out%ts%grid%lqwssol(1:shd%NA, :), 2) + sum(out%ts%grid%fzwssol(1:shd%NA, :), 2))*shd%FRAC)
-!-        STG_INI = STG_INI/sum(shd%FRAC)
-!-    end if
 
     !> Read in existing basin states for RESUMEFLAG.
     if (.not. resume_options%resume%state == FLAG_OFF .and. btest(resume_options%resume%flo%ext, FILE_TYPE_SEQ) .and. &
@@ -864,7 +376,7 @@ program RUNMESH
         iun = fls%fl(mfk%f883)%iun
         open(iun, file = trim(adjustl(fls%fl(mfk%f883)%fn)) // '.mesh_driver', status = 'old', action = 'read', &
              form = 'unformatted', access = 'sequential', iostat = ierr)
-!todo: condition for ierr.
+        !todo: condition for ierr.
 
         !> Time-stepping information.
         read(iun) now_year_i4, now_jday_i4, now_month_i4, now_day_i4, now_hour_i4, now_mins_i4
@@ -917,8 +429,6 @@ program RUNMESH
 
         !> Close the file to free the unit.
         close(iun)
-!-    else
-!-        call run_save_basin_update_stg_ini(fls, shd)
     end if
 
     !> Update 'next' counter.
@@ -942,7 +452,45 @@ program RUNMESH
     ENDDATE = .false.
     ENDDATA = .false.
 
+    !> Run the model for each time-step until the
+    !> end date or end of data is reached.
     do while (.not. ENDDATE .and. .not. ENDDATA)
+
+        !> If hit the end of forcing data, switch to the next forcing dataset file.
+        call check_forcing_data_end(ENDDATA, ierr)
+        if (ierr /= 0) then
+            call reset_tab()
+            call print_error("Errors occurred checking the forcing data end date.")
+            call program_abort()
+        end if
+
+        if (ENDDATA) then
+            !> Switch to the next forcing data file.
+            fpos = fpos + 1
+            call switch_forcing_file( &
+                fpos=fpos, &
+                ENDDATA=ENDDATA, &
+                error_status=ierr)
+            if (ierr /= 0) then
+                call reset_tab()
+                call print_error("Errors occurred switching the forcing data files.")
+                call program_abort()
+            end if
+
+            !> If no switch happened and the end of available data is reached, exit.
+            if (ENDDATA) then
+                exit
+            end if
+
+            !> Read the new file(s).
+            call open_input_forcing_files(ierr)
+            if (ierr /= 0) then
+                call reset_tab()
+                call print_error("Errors occurred opening the forcing files.")
+                call program_abort()
+            end if
+
+        end if ! if (ENDDATA) then
 
         !> Reset output variables.
         call output_variables_reset(shd)
@@ -969,61 +517,14 @@ program RUNMESH
         if (ro%RUNGRID) call run_between_grid(fls, shd)
 
         !> Update output variables.
-!todo: Enable this when the one in 'run_between_grid' is removed.
-!+        call output_variables_update(shd)
+        !todo: Enable this when the one in 'run_between_grid' is removed.
+        !+  call output_variables_update(shd)
 
         !> *********************************************************************
         !> Start of book-keeping and grid accumulation.
         !> *********************************************************************
 
         if (ISHEADNODE) then
-
-            !> Write ENSIM output
-!-            if (NR2CFILES > 0 .and. mod(ic%ts_daily*30, DELTR2C) == 0) then
-!-                call FIND_MONTH (ic%now%jday, ic%now%year, ensim_month)
-!-                call FIND_DAY (ic%now%jday, ic%now%year, ensim_day)
-!-                call WRITE_R2C_DATA(shd%lc%NML, shd%NA, shd%lc%NTYPE, ic%ts_daily, ic%now%mins, shd%lc%ACLASS, &
-!-                                    shd%NA, shd%xxx, shd%yyy, shd%xCount, shd%yCount, shd%lc%ILMOS, shd%lc%JLMOS, shd%lc%NML, &
-!-                                    NR2C, NR2CFILES, R2CFILEUNITSTART, GRD, GAT, &
-!-                                    GRDGAT, NR2CSTATES, R2C_ATTRIBUTES, FRAME_NO_NEW, ic%now%year, &
-!-                                    ensim_MONTH, ensim_DAY, ic%now%hour, ic%now%mins, ICAN, &
-!-                                    ICAN + 1, shd%lc%IGND, &
-!-                                    cpv%TBAR, cpv%THLQ, cpv%THIC, cpv%TPND, cpv%ZPND, &
-!-                                    cpv%TBAS, cpv%ALBS, cpv%TSNO, cpv%RHOS, cpv%SNO, &
-!-                                    cpv%TCAN, cpv%RCAN, cpv%SNCAN, cpv%GRO, cpv%CMAI, &
-!-                                    csfv%FCAN, csfv%LNZ0, csfv%ALVC, csfv%ALIC, csfv%PAMX, &
-!-                                    csfv%PAMN, csfv%CMAS, csfv%ROOT, csfv%RSMN, csfv%QA50, &
-!-                                    csfv%VPDA, csfv%VPDB, csfv%PSGA, csfv%PSGB, csfv%PAID, &
-!-                                    csfv%HGTD, csfv%ACVD, csfv%ACID, cpv%TSFS, cpv%WSNO, &
-!-                                    csfv%THP, csfv%THR, csfv%THM, csfv%BI, csfv%PSIS, &
-!-                                    csfv%GRKS, csfv%THRA, csfv%HCPS, csfv%TCS, &
-!-                                    csfv%THFC, csfv%PSIW, csfv%DELZW, csfv%ZBTW, &
-!-                                    csfv%ZSNL, csfv%ZPLG, csfv%ZPLS, cpv%TAC, cpv%QAC, &
-!-                                    csfv%DRN, csfv%XSLP, XDGAT, csfv%WFSF, KSGAT, &
-!-                                    csfv%ALGW, csfv%ALGD, csfv%ASVD, csfv%ASID, csfv%AGVD, &
-!-                                    csfv%AGID, csfv%ISND, catv%RADJ, catv%ZBLD, catv%Z0OR, &
-!-                                    catv%ZRFM, catv%ZRFH, catv%ZDM, catv%ZDH, cfi%FSVH, &
-!-                                    cfi%FSIH, catv%CSZ, cfi%FDL, cfi%UL, cfi%VL, &
-!-                                    cfi%TA, cfi%QA, cfi%PRES, cfi%PRE, catv%PADR, &
-!-                                    catv%VPD, catv%TADP, catv%RHOA, catv%RPCP, catv%TRPC, &
-!-                                    catv%SPCP, catv%TSPC, catv%RHSI, catv%FCLO, catv%DLON, &
-!-                                    catv%GGEO, &
-!-                                    cdv%CDH, cdv%CDM, cdv%HFS, cdv%TFX, cdv%QEVP, &
-!-                                    cdv%QFS, cdv%QFX, cdv%PET, cdv%GA, cdv%EF, &
-!-                                    cdv%GTE, cdv%QG, cdv%ALVS, cdv%ALIR, &
-!-                                    cdv%SFCT, cdv%SFCU, cdv%SFCV, cdv%SFCQ, cdv%FSNO, &
-!-                                    cdv%FSGV, cdv%FSGS, cdv%FSGG, cdv%FLGV, cdv%FLGS, &
-!-                                    cdv%FLGG, cdv%HFSC, cdv%HFSS, cdv%HFSG, cdv%HEVC, &
-!-                                    cdv%HEVS, cdv%HEVG, cdv%HMFC, cdv%HMFN, cdv%HTCC, &
-!-                                    cdv%HTCS, cdv%PCFC, cdv%PCLC, cdv%PCPN, cdv%PCPG, &
-!-                                    cdv%QFG, cdv%QFN, cdv%QFCL, cdv%QFCF, cdv%ROF, &
-!-                                    cdv%ROFO, cdv%ROFS, cdv%ROFB, cdv%TROF, cdv%TROO, &
-!-                                    cdv%TROS, cdv%TROB, cdv%ROFC, cdv%ROFN, cdv%ROVG, &
-!-                                    cdv%WTRC, cdv%WTRS, cdv%WTRG, cdv%DR, cdv%GFLX, &
-!-                                    cdv%HMFG, cdv%HTC, cdv%QFC, MANNGAT, DDGAT, &
-!-                                    csfv%IGDR, cfi%VMOD, QLWOGAT)
-!-                FRAME_NO_NEW = FRAME_NO_NEW + 1 !UPDATE COUNTERS
-!-            end if
 
             !> Update output files.
             call output_files_update(fls, shd)
@@ -1096,21 +597,6 @@ program RUNMESH
         ENDDATE = ( &
             ic%now%year == ic%stop%year .and. ic%now%jday == ic%stop%jday .and. &
             ic%now%hour == ic%stop%hour .and. ic%now%mins == ic%stop%mins)
-!-        if (ic%now%year >= ic%stop%year .and. ic%stop%year > 0) then
-!-            if (ic%now%year > ic%stop%year) then
-!-                ENDDATE = .true.
-!-            else if (ic%now%year == ic%stop%year .and. ic%now%jday >= ic%stop%jday) then
-!-                if (ic%now%jday > ic%stop%jday) then
-!-                    ENDDATE = .true.
-!-                else if (ic%now%jday == ic%stop%jday .and. ic%now%hour >= ic%stop%hour) then
-!-                    if (ic%now%hour > ic%stop%hour) then
-!-                        ENDDATE = .true.
-!-                    else if (ic%now%hour == ic%stop%hour .and. ic%now%mins >= ic%stop%mins) then
-!-                        ENDDATE = .true.
-!-                    end if
-!-                end if
-!-            end if
-!-        end if
 
         !> Check the run state.
         if (ENDDATA .or. ENDDATE) exit
@@ -1134,63 +620,63 @@ program RUNMESH
     !> *********************************************************************
 
     !> Write the resume file
-!-    if (SAVERESUMEFLAG == 2) then !todo: done: use a flag
-!-        call print_message('Saving state variables in r2c file format')
+    !-    if (SAVERESUMEFLAG == 2) then !todo: done: use a flag
+    !-        call print_message('Saving state variables in r2c file format')
 
-    !> Allocate arrays for save_state_r2c
-!-        open(55, file = 'save_state_r2c.txt', action = 'read')
-!-        read(55, *, iostat = ierr) NR2C_S, DELTR2C_S
-!-        if (ierr == 0) then
-!-            allocate(GRD_S(NR2C_S), GAT_S(NR2C_S), GRDGAT_S(NR2C_S), R2C_ATTRIBUTES_S(NR2C_S, 3), stat = ierr)
-!-            if (ierr /= 0) then
-!-                call print_error('Unable to allocate variables for SAVERESUMESTATE 2.')
-!-                call print_message('Check the value of the first record at the first line in save_state_r2c.txt.')
-!-                call print_message('The value should be an integer value greater than zero.')
-!-                call program_abort()
-!-            end if
-!-        end if
-!-        close(55)
+        !> Allocate arrays for save_state_r2c
+    !-        open(55, file = 'save_state_r2c.txt', action = 'read')
+    !-        read(55, *, iostat = ierr) NR2C_S, DELTR2C_S
+    !-        if (ierr == 0) then
+    !-            allocate(GRD_S(NR2C_S), GAT_S(NR2C_S), GRDGAT_S(NR2C_S), R2C_ATTRIBUTES_S(NR2C_S, 3), stat = ierr)
+    !-            if (ierr /= 0) then
+    !-                call print_error('Unable to allocate variables for SAVERESUMESTATE 2.')
+    !-                call print_message('Check the value of the first record at the first line in save_state_r2c.txt.')
+    !-                call print_message('The value should be an integer value greater than zero.')
+    !-                call program_abort()
+    !-            end if
+    !-        end if
+    !-        close(55)
 
-!-        call SAVE_STATE_R2C(shd%lc%NML, shd%NA, shd%lc%NTYPE, ic%ts_daily, &
-!-                            ic%now%mins, shd%lc%ACLASS, NR2C_S, GRD_S, GAT_S, GRDGAT_S, R2C_ATTRIBUTES_S, &
-!-                            shd%NA, shd%xxx, shd%yyy, shd%xCount, shd%yCount, shd%lc%ILMOS, shd%lc%JLMOS, shd%lc%NML, ICAN, ICP1, shd%lc%IGND, &
-!-                            cpv%TBAR, cpv%THLQ, cpv%THIC, cpv%TPND, cpv%ZPND, &
-!-                            cpv%TBAS, cpv%ALBS, cpv%TSNO, cpv%RHOS, cpv%SNO, &
-!-                            cpv%TCAN, cpv%RCAN, cpv%SNCAN, cpv%GRO, cpv%CMAI, &
-!-                            csfv%FCAN, csfv%LNZ0, csfv%ALVC, csfv%ALIC, csfv%PAMX, &
-!-                            csfv%PAMN, csfv%CMAS, csfv%ROOT, csfv%RSMN, csfv%QA50, &
-!-                            csfv%VPDA, csfv%VPDB, csfv%PSGA, csfv%PSGB, csfv%PAID, &
-!-                            csfv%HGTD, csfv%ACVD, csfv%ACID, cpv%TSFS, cpv%WSNO, &
-!-                            csfv%THP, csfv%THR, csfv%THM, csfv%BI, csfv%PSIS, &
-!-                            csfv%GRKS, csfv%THRA, csfv%HCPS, csfv%TCS, &
-!-                            csfv%THFC, csfv%PSIW, csfv%DELZW, csfv%ZBTW, &
-!-                            csfv%ZSNL, csfv%ZPLG, csfv%ZPLS, cpv%TAC, cpv%QAC, &
-!-                            csfv%DRN, csfv%XSLP, XDGAT, csfv%WFSF, KSGAT, &
-!-                            csfv%ALGW, csfv%ALGD, csfv%ASVD, csfv%ASID, csfv%AGVD, &
-!-                            csfv%AGID, csfv%ISND, catv%RADJ, catv%ZBLD, catv%Z0OR, &
-!-                            catv%ZRFM, catv%ZRFH, catv%ZDM, catv%ZDH, cfi%FSVH, &
-!-                            cfi%FSIH, catv%CSZ, cfi%FDL, cfi%UL, cfi%VL, &
-!-                            cfi%TA, cfi%QA, cfi%PRES, cfi%PRE, catv%PADR, &
-!-                            catv%VPD, catv%TADP, catv%RHOA, catv%RPCP, catv%TRPC, &
-!-                            catv%SPCP, catv%TSPC, catv%RHSI, catv%FCLO, catv%DLON, &
-!-                            catv%GGEO, &
-!-                            cdv%CDH, cdv%CDM, cdv%HFS, cdv%TFX, cdv%QEVP, &
-!-                            cdv%QFS, cdv%QFX, cdv%PET, cdv%GA, cdv%EF, &
-!-                            cdv%GTE, cdv%QG, cdv%ALVS, cdv%ALIR, &
-!-                            cdv%SFCT, cdv%SFCU, cdv%SFCV, cdv%SFCQ, cdv%FSNO, &
-!-                            cdv%FSGV, cdv%FSGS, cdv%FSGG, cdv%FLGV, cdv%FLGS, &
-!-                            cdv%FLGG, cdv%HFSC, cdv%HFSS, cdv%HFSG, cdv%HEVC, &
-!-                            cdv%HEVS, cdv%HEVG, cdv%HMFC, cdv%HMFN, cdv%HTCC, &
-!-                            cdv%HTCS, cdv%PCFC, cdv%PCLC, cdv%PCPN, cdv%PCPG, &
-!-                            cdv%QFG, cdv%QFN, cdv%QFCL, cdv%QFCF, cdv%ROF, &
-!-                            cdv%ROFO, cdv%ROFS, cdv%ROFB, cdv%TROF, cdv%TROO, &
-!-                            cdv%TROS, cdv%TROB, cdv%ROFC, cdv%ROFN, cdv%ROVG, &
-!-                            cdv%WTRC, cdv%WTRS, cdv%WTRG, cdv%DR, cdv%GFLX, &
-!-                            cdv%HMFG, cdv%HTC, cdv%QFC, MANNGAT, DDGAT, &
-!-                            csfv%SAND, csfv%CLAY, csfv%IGDR, cfi%VMOD, QLWOGAT, &
-!-                            shd%CoordSys%Proj, shd%CoordSys%Ellips, shd%CoordSys%Zone, &
-!-                            shd%xOrigin, shd%yOrigin, shd%xDelta, shd%yDelta)
-!-    end if !(SAVERESUMEFLAG == 2) then
+    !-        call SAVE_STATE_R2C(shd%lc%NML, shd%NA, shd%lc%NTYPE, ic%ts_daily, &
+    !-                            ic%now%mins, shd%lc%ACLASS, NR2C_S, GRD_S, GAT_S, GRDGAT_S, R2C_ATTRIBUTES_S, &
+    !-                            shd%NA, shd%xxx, shd%yyy, shd%xCount, shd%yCount, shd%lc%ILMOS, shd%lc%JLMOS, shd%lc%NML, ICAN, ICP1, shd%lc%IGND, &
+    !-                            cpv%TBAR, cpv%THLQ, cpv%THIC, cpv%TPND, cpv%ZPND, &
+    !-                            cpv%TBAS, cpv%ALBS, cpv%TSNO, cpv%RHOS, cpv%SNO, &
+    !-                            cpv%TCAN, cpv%RCAN, cpv%SNCAN, cpv%GRO, cpv%CMAI, &
+    !-                            csfv%FCAN, csfv%LNZ0, csfv%ALVC, csfv%ALIC, csfv%PAMX, &
+    !-                            csfv%PAMN, csfv%CMAS, csfv%ROOT, csfv%RSMN, csfv%QA50, &
+    !-                            csfv%VPDA, csfv%VPDB, csfv%PSGA, csfv%PSGB, csfv%PAID, &
+    !-                            csfv%HGTD, csfv%ACVD, csfv%ACID, cpv%TSFS, cpv%WSNO, &
+    !-                            csfv%THP, csfv%THR, csfv%THM, csfv%BI, csfv%PSIS, &
+    !-                            csfv%GRKS, csfv%THRA, csfv%HCPS, csfv%TCS, &
+    !-                            csfv%THFC, csfv%PSIW, csfv%DELZW, csfv%ZBTW, &
+    !-                            csfv%ZSNL, csfv%ZPLG, csfv%ZPLS, cpv%TAC, cpv%QAC, &
+    !-                            csfv%DRN, csfv%XSLP, XDGAT, csfv%WFSF, KSGAT, &
+    !-                            csfv%ALGW, csfv%ALGD, csfv%ASVD, csfv%ASID, csfv%AGVD, &
+    !-                            csfv%AGID, csfv%ISND, catv%RADJ, catv%ZBLD, catv%Z0OR, &
+    !-                            catv%ZRFM, catv%ZRFH, catv%ZDM, catv%ZDH, cfi%FSVH, &
+    !-                            cfi%FSIH, catv%CSZ, cfi%FDL, cfi%UL, cfi%VL, &
+    !-                            cfi%TA, cfi%QA, cfi%PRES, cfi%PRE, catv%PADR, &
+    !-                            catv%VPD, catv%TADP, catv%RHOA, catv%RPCP, catv%TRPC, &
+    !-                            catv%SPCP, catv%TSPC, catv%RHSI, catv%FCLO, catv%DLON, &
+    !-                            catv%GGEO, &
+    !-                            cdv%CDH, cdv%CDM, cdv%HFS, cdv%TFX, cdv%QEVP, &
+    !-                            cdv%QFS, cdv%QFX, cdv%PET, cdv%GA, cdv%EF, &
+    !-                            cdv%GTE, cdv%QG, cdv%ALVS, cdv%ALIR, &
+    !-                            cdv%SFCT, cdv%SFCU, cdv%SFCV, cdv%SFCQ, cdv%FSNO, &
+    !-                            cdv%FSGV, cdv%FSGS, cdv%FSGG, cdv%FLGV, cdv%FLGS, &
+    !-                            cdv%FLGG, cdv%HFSC, cdv%HFSS, cdv%HFSG, cdv%HEVC, &
+    !-                            cdv%HEVS, cdv%HEVG, cdv%HMFC, cdv%HMFN, cdv%HTCC, &
+    !-                            cdv%HTCS, cdv%PCFC, cdv%PCLC, cdv%PCPN, cdv%PCPG, &
+    !-                            cdv%QFG, cdv%QFN, cdv%QFCL, cdv%QFCF, cdv%ROF, &
+    !-                            cdv%ROFO, cdv%ROFS, cdv%ROFB, cdv%TROF, cdv%TROO, &
+    !-                            cdv%TROS, cdv%TROB, cdv%ROFC, cdv%ROFN, cdv%ROVG, &
+    !-                            cdv%WTRC, cdv%WTRS, cdv%WTRG, cdv%DR, cdv%GFLX, &
+    !-                            cdv%HMFG, cdv%HTC, cdv%QFC, MANNGAT, DDGAT, &
+    !-                            csfv%SAND, csfv%CLAY, csfv%IGDR, cfi%VMOD, QLWOGAT, &
+    !-                            shd%CoordSys%Proj, shd%CoordSys%Ellips, shd%CoordSys%Zone, &
+    !-                            shd%xOrigin, shd%yOrigin, shd%xDelta, shd%yDelta)
+    !-    end if !(SAVERESUMEFLAG == 2) then
 
     !> Close output files.
     call output_files_finalize(fls, shd)
@@ -1223,19 +709,19 @@ program RUNMESH
     if (ISHEADNODE) then
 
         !> Basin totals for the run.
-!-        if (ro%RUNBALWB) then
-!-            TOTAL_PRE = TOTAL_PRE + sum(out%tot%grid%prec(1:shd%NA)*shd%FRAC)/sum(shd%FRAC)
-!-            TOTAL_EVAP = TOTAL_EVAP + sum(out%tot%grid%et(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
-!-            TOTAL_ROF = TOTAL_ROF + sum(out%tot%grid%rof(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
-!-            TOTAL_ROFO = TOTAL_ROFO + sum(out%tot%grid%ovrflw(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
-!-            TOTAL_ROFS = TOTAL_ROFS + sum(sum(out%tot%grid%latflw(1:shd%NA, :), 2)*shd%FRAC)*ic%dts/sum(shd%FRAC)
-!-            TOTAL_ROFB = TOTAL_ROFB + sum(out%tot%grid%drainsol(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
-!-            STG_FIN = sum( &
-!-                (out%ts%grid%lqwscan(1:shd%NA) + out%ts%grid%fzwscan(1:shd%NA) + &
-!-                 out%ts%grid%sno(1:shd%NA) + out%ts%grid%lqwssno(1:shd%NA) + out%ts%grid%lqwspnd(1:shd%NA) + &
-!-                 out%ts%grid%stggw(1:shd%NA) + &
-!-                 sum(out%ts%grid%lqwssol(1:shd%NA, :), 2) + sum(out%ts%grid%fzwssol(1:shd%NA, :), 2))*shd%FRAC)/sum(shd%FRAC)
-!-        end if
+        !-        if (ro%RUNBALWB) then
+        !-            TOTAL_PRE = TOTAL_PRE + sum(out%tot%grid%prec(1:shd%NA)*shd%FRAC)/sum(shd%FRAC)
+        !-            TOTAL_EVAP = TOTAL_EVAP + sum(out%tot%grid%et(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
+        !-            TOTAL_ROF = TOTAL_ROF + sum(out%tot%grid%rof(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
+        !-            TOTAL_ROFO = TOTAL_ROFO + sum(out%tot%grid%ovrflw(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
+        !-            TOTAL_ROFS = TOTAL_ROFS + sum(sum(out%tot%grid%latflw(1:shd%NA, :), 2)*shd%FRAC)*ic%dts/sum(shd%FRAC)
+        !-            TOTAL_ROFB = TOTAL_ROFB + sum(out%tot%grid%drainsol(1:shd%NA)*shd%FRAC)*ic%dts/sum(shd%FRAC)
+        !-            STG_FIN = sum( &
+        !-                (out%ts%grid%lqwscan(1:shd%NA) + out%ts%grid%fzwscan(1:shd%NA) + &
+        !-                 out%ts%grid%sno(1:shd%NA) + out%ts%grid%lqwssno(1:shd%NA) + out%ts%grid%lqwspnd(1:shd%NA) + &
+        !-                 out%ts%grid%stggw(1:shd%NA) + &
+        !-                 sum(out%ts%grid%lqwssol(1:shd%NA, :), 2) + sum(out%ts%grid%fzwssol(1:shd%NA, :), 2))*shd%FRAC)/sum(shd%FRAC)
+        !-        end if
 
         !> Save the current state of the model for SAVERESUMEFLAG.
         if (btest(resume_options%save%flo%ext, FILE_TYPE_SEQ) .and. &
@@ -1245,7 +731,7 @@ program RUNMESH
             iun = fls%fl(mfk%f883)%iun
             open(iun, file = trim(adjustl(fls%fl(mfk%f883)%fn)) // '.mesh_driver', status = 'replace', action = 'write', &
                  form = 'unformatted', access = 'sequential', iostat = ierr)
-!todo: condition for ierr.
+            !todo: condition for ierr.
 
             !> Time-stepping information.
             write(iun) &
@@ -1277,132 +763,132 @@ program RUNMESH
         end if
 
         !> Save state file.
-!-        if (btest(resume_options%save%flo%ext, FILE_TYPE_NC4)) then
-!-            call save_initial_states_nc(fls, shd, ierr)
-!-        end if
+        !-        if (btest(resume_options%save%flo%ext, FILE_TYPE_NC4)) then
+        !-            call save_initial_states_nc(fls, shd, ierr)
+        !-        end if
 
         !> Write data to the output summary file.
-!-        if (ECHOTXTMODE) then
+        !-        if (ECHOTXTMODE) then
 
-            !> CLASS states for prognostic variables.
-!-            NTYPE = shd%lc%NTYPE
-!-            NSL = shd%lc%IGND
-!-            NML = shd%lc%NML
-!-            allocate(tcan(3, NTYPE), rcan(3, NTYPE), sncan(3, NTYPE), gro(3, NTYPE), zpnd(3, NTYPE), tpnd(3, NTYPE), &
-!-                     sno(3, NTYPE), tsno(3, NTYPE), albs(3, NTYPE), rhos(3, NTYPE), &
-!-                     tbar(3, NTYPE, NSL), thlq(3, NTYPE, NSL), thic(3, NTYPE, NSL), kc(NTYPE))
-!-            tcan = 0.0; rcan = 0.0; sncan = 0.0; gro = 0.0; zpnd = 0.0; tpnd = 0.0
-!-            sno = 0.0; tsno = 0.0; albs = 0.0; rhos = 0.0
-!-            tbar = 0.0; thlq = 0.0; thic = 0.0; kc = 0
+        !> CLASS states for prognostic variables.
+        !-            NTYPE = shd%lc%NTYPE
+        !-            NSL = shd%lc%IGND
+        !-            NML = shd%lc%NML
+        !-            allocate(tcan(3, NTYPE), rcan(3, NTYPE), sncan(3, NTYPE), gro(3, NTYPE), zpnd(3, NTYPE), tpnd(3, NTYPE), &
+        !-                     sno(3, NTYPE), tsno(3, NTYPE), albs(3, NTYPE), rhos(3, NTYPE), &
+        !-                     tbar(3, NTYPE, NSL), thlq(3, NTYPE, NSL), thic(3, NTYPE, NSL), kc(NTYPE))
+        !-            tcan = 0.0; rcan = 0.0; sncan = 0.0; gro = 0.0; zpnd = 0.0; tpnd = 0.0
+        !-            sno = 0.0; tsno = 0.0; albs = 0.0; rhos = 0.0
+        !-            tbar = 0.0; thlq = 0.0; thic = 0.0; kc = 0
 
-            !> Loop through the GRUs.
-!-            do m = 1, NTYPE
+        !> Loop through the GRUs.
+        !-            do m = 1, NTYPE
 
-                !> Cycle if the GRU does not exist.
-!-                if (count(shd%lc%JLMOS(1:NML) == m) == 0) cycle
+        !> Cycle if the GRU does not exist.
+        !-                if (count(shd%lc%JLMOS(1:NML) == m) == 0) cycle
 
-                !> Canopy.
-!-                tcan(3, m) = maxval(vs%tile%tcan, shd%lc%JLMOS(1:NML) == m)
-!-                if (tcan(3, m) > 0.0) then
-!-                    tcan(1, m) = sum(vs%tile%tcan, shd%lc%JLMOS(1:NML) == m .and. &
-!-                                     vs%tile%tcan /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%tcan /= 0.0)
-!-                    tcan(2, m) = minval(vs%tile%tcan, shd%lc%JLMOS(1:NML) == m .and. vs%tile%tcan /= 0.0)
-!-                end if
-!-                where (tcan < 173.16 .or. tcan > 373.16 .or. tcan == 0.0) tcan = 273.16
-!-                rcan(2, m) = minval(vs%tile%lqwscan, shd%lc%JLMOS(1:NML) == m)
-!-                rcan(3, m) = maxval(vs%tile%lqwscan, shd%lc%JLMOS(1:NML) == m)
-!-                rcan(1, m) = sum(vs%tile%lqwscan, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                sncan(2, m) = minval(vs%tile%fzwscan, shd%lc%JLMOS(1:NML) == m)
-!-                sncan(3, m) = maxval(vs%tile%fzwscan, shd%lc%JLMOS(1:NML) == m)
-!-                sncan(1, m) = sum(vs%tile%fzwscan, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                gro(2, m) = minval(vs%tile%gro, shd%lc%JLMOS(1:NML) == m)
-!-                gro(3, m) = maxval(vs%tile%gro, shd%lc%JLMOS(1:NML) == m)
-!-                gro(1, m) = sum(vs%tile%gro, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !> Canopy.
+        !-                tcan(3, m) = maxval(vs%tile%tcan, shd%lc%JLMOS(1:NML) == m)
+        !-                if (tcan(3, m) > 0.0) then
+        !-                    tcan(1, m) = sum(vs%tile%tcan, shd%lc%JLMOS(1:NML) == m .and. &
+        !-                                     vs%tile%tcan /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%tcan /= 0.0)
+        !-                    tcan(2, m) = minval(vs%tile%tcan, shd%lc%JLMOS(1:NML) == m .and. vs%tile%tcan /= 0.0)
+        !-                end if
+        !-                where (tcan < 173.16 .or. tcan > 373.16 .or. tcan == 0.0) tcan = 273.16
+        !-                rcan(2, m) = minval(vs%tile%lqwscan, shd%lc%JLMOS(1:NML) == m)
+        !-                rcan(3, m) = maxval(vs%tile%lqwscan, shd%lc%JLMOS(1:NML) == m)
+        !-                rcan(1, m) = sum(vs%tile%lqwscan, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                sncan(2, m) = minval(vs%tile%fzwscan, shd%lc%JLMOS(1:NML) == m)
+        !-                sncan(3, m) = maxval(vs%tile%fzwscan, shd%lc%JLMOS(1:NML) == m)
+        !-                sncan(1, m) = sum(vs%tile%fzwscan, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                gro(2, m) = minval(vs%tile%gro, shd%lc%JLMOS(1:NML) == m)
+        !-                gro(3, m) = maxval(vs%tile%gro, shd%lc%JLMOS(1:NML) == m)
+        !-                gro(1, m) = sum(vs%tile%gro, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
 
-                !> Ponded water at surface.
-!-                zpnd(2, m) = minval(vs%tile%zpnd, shd%lc%JLMOS(1:NML) == m)
-!-                zpnd(3, m) = maxval(vs%tile%zpnd, shd%lc%JLMOS(1:NML) == m)
-!-                zpnd(1, m) = sum(vs%tile%zpnd, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                tpnd(3, m) = maxval(vs%tile%tpnd, shd%lc%JLMOS(1:NML) == m)
-!-                if (tpnd(3, m) > 0.0) then
-!-                    tpnd(1, m) = sum(vs%tile%tpnd, shd%lc%JLMOS(1:NML) == m .and. &
-!-                                     vs%tile%tpnd /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%tpnd /= 0.0)
-!-                    tpnd(2, m) = minval(vs%tile%tpnd, shd%lc%JLMOS(1:NML) == m .and. vs%tile%tpnd /= 0.0)
-!-                end if
-!-                where (tpnd < 173.16 .or. tpnd > 373.16 .or. tpnd == 0.0) tpnd = 273.16
+        !> Ponded water at surface.
+        !-                zpnd(2, m) = minval(vs%tile%zpnd, shd%lc%JLMOS(1:NML) == m)
+        !-                zpnd(3, m) = maxval(vs%tile%zpnd, shd%lc%JLMOS(1:NML) == m)
+        !-                zpnd(1, m) = sum(vs%tile%zpnd, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                tpnd(3, m) = maxval(vs%tile%tpnd, shd%lc%JLMOS(1:NML) == m)
+        !-                if (tpnd(3, m) > 0.0) then
+        !-                    tpnd(1, m) = sum(vs%tile%tpnd, shd%lc%JLMOS(1:NML) == m .and. &
+        !-                                     vs%tile%tpnd /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%tpnd /= 0.0)
+        !-                    tpnd(2, m) = minval(vs%tile%tpnd, shd%lc%JLMOS(1:NML) == m .and. vs%tile%tpnd /= 0.0)
+        !-                end if
+        !-                where (tpnd < 173.16 .or. tpnd > 373.16 .or. tpnd == 0.0) tpnd = 273.16
 
-                !> Snow.
-!-                sno(2, m) = minval(vs%tile%sno, shd%lc%JLMOS(1:NML) == m)
-!-                sno(3, m) = maxval(vs%tile%sno, shd%lc%JLMOS(1:NML) == m)
-!-                sno(1, m) = sum(vs%tile%sno, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                tsno(3, m) = maxval(vs%tile%tsno, shd%lc%JLMOS(1:NML) == m)
-!-                if (tsno(3, m) > 0.0) then
-!-                    tsno(1, m) = sum(vs%tile%tsno, shd%lc%JLMOS(1:NML) == m .and. &
-!-                                     vs%tile%tsno /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%tsno /= 0.0)
-!-                    tsno(2, m) = minval(vs%tile%tsno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%tsno /= 0.0)
-!-                end if
-!-                where (tsno < 173.16 .or. tsno > 373.16 .or. tsno == 0.0) tsno = 273.16
-!-                if (sno(3, m) > 0.0) then
-!-                    albs(1, m) = sum(vs%tile%albsno, shd%lc%JLMOS(1:NML) == m .and. &
-!-                                     vs%tile%sno > 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%sno > 0.0)
-!-                    albs(2, m) = minval(vs%tile%albsno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%sno > 0.0)
-!-                    albs(3, m) = maxval(vs%tile%albsno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%sno > 0.0)
-!-                end if
-!-                rhos(3, m) = maxval(vs%tile%rhosno, shd%lc%JLMOS(1:NML) == m)
-!-                if (rhos(3, m) > 0.0) then
-!-                    rhos(1, m) = sum(vs%tile%rhosno, shd%lc%JLMOS(1:NML) == m .and. &
-!-                                     vs%tile%rhosno /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%rhosno /= 0.0)
-!-                    rhos(2, m) = minval(vs%tile%rhosno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%rhosno /= 0.0)
-!-                end if
+        !> Snow.
+        !-                sno(2, m) = minval(vs%tile%sno, shd%lc%JLMOS(1:NML) == m)
+        !-                sno(3, m) = maxval(vs%tile%sno, shd%lc%JLMOS(1:NML) == m)
+        !-                sno(1, m) = sum(vs%tile%sno, shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                tsno(3, m) = maxval(vs%tile%tsno, shd%lc%JLMOS(1:NML) == m)
+        !-                if (tsno(3, m) > 0.0) then
+        !-                    tsno(1, m) = sum(vs%tile%tsno, shd%lc%JLMOS(1:NML) == m .and. &
+        !-                                     vs%tile%tsno /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%tsno /= 0.0)
+        !-                    tsno(2, m) = minval(vs%tile%tsno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%tsno /= 0.0)
+        !-                end if
+        !-                where (tsno < 173.16 .or. tsno > 373.16 .or. tsno == 0.0) tsno = 273.16
+        !-                if (sno(3, m) > 0.0) then
+        !-                    albs(1, m) = sum(vs%tile%albsno, shd%lc%JLMOS(1:NML) == m .and. &
+        !-                                     vs%tile%sno > 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%sno > 0.0)
+        !-                    albs(2, m) = minval(vs%tile%albsno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%sno > 0.0)
+        !-                    albs(3, m) = maxval(vs%tile%albsno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%sno > 0.0)
+        !-                end if
+        !-                rhos(3, m) = maxval(vs%tile%rhosno, shd%lc%JLMOS(1:NML) == m)
+        !-                if (rhos(3, m) > 0.0) then
+        !-                    rhos(1, m) = sum(vs%tile%rhosno, shd%lc%JLMOS(1:NML) == m .and. &
+        !-                                     vs%tile%rhosno /= 0.0)/count(shd%lc%JLMOS(1:NML) == m .and. vs%tile%rhosno /= 0.0)
+        !-                    rhos(2, m) = minval(vs%tile%rhosno, shd%lc%JLMOS(1:NML) == m .and. vs%tile%rhosno /= 0.0)
+        !-                end if
 
-                !> Soil.
-!-                do j = 1, NSL
-!-                    tbar(1, m, j) = sum(vs%tile%tsol(:, j), shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                    tbar(2, m, j) = minval(vs%tile%tsol(:, j), shd%lc%JLMOS(1:NML) == m)
-!-                    tbar(3, m, j) = maxval(vs%tile%tsol(:, j), shd%lc%JLMOS(1:NML) == m)
-!-                    thlq(1, m, j) = sum(vs%tile%thlqsol(:, j), shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                    thlq(2, m, j) = minval(vs%tile%thlqsol(:, j), shd%lc%JLMOS(1:NML) == m)
-!-                    thlq(3, m, j) = maxval(vs%tile%thlqsol(:, j), shd%lc%JLMOS(1:NML) == m)
-!-                    thic(1, m, j) = sum(vs%tile%thicsol(:, j), shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
-!-                    thic(2, m, j) = minval(vs%tile%thicsol(:, j), shd%lc%JLMOS(1:NML) == m)
-!-                    thic(3, m, j) = maxval(vs%tile%thicsol(:, j), shd%lc%JLMOS(1:NML) == m)
-!-                end do
-!-            end do
+        !> Soil.
+        !-                do j = 1, NSL
+        !-                    tbar(1, m, j) = sum(vs%tile%tsol(:, j), shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                    tbar(2, m, j) = minval(vs%tile%tsol(:, j), shd%lc%JLMOS(1:NML) == m)
+        !-                    tbar(3, m, j) = maxval(vs%tile%tsol(:, j), shd%lc%JLMOS(1:NML) == m)
+        !-                    thlq(1, m, j) = sum(vs%tile%thlqsol(:, j), shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                    thlq(2, m, j) = minval(vs%tile%thlqsol(:, j), shd%lc%JLMOS(1:NML) == m)
+        !-                    thlq(3, m, j) = maxval(vs%tile%thlqsol(:, j), shd%lc%JLMOS(1:NML) == m)
+        !-                    thic(1, m, j) = sum(vs%tile%thicsol(:, j), shd%lc%JLMOS(1:NML) == m)/count(shd%lc%JLMOS(1:NML) == m)
+        !-                    thic(2, m, j) = minval(vs%tile%thicsol(:, j), shd%lc%JLMOS(1:NML) == m)
+        !-                    thic(3, m, j) = maxval(vs%tile%thicsol(:, j), shd%lc%JLMOS(1:NML) == m)
+        !-                end do
+        !-            end do
 
-            !> Write to file.
-!-            if (NRSOILAYEREADFLAG > 3) then
-!-                ignd = min(NRSOILAYEREADFLAG, NSL)
-!-            else if (NRSOILAYEREADFLAG == 1) then
-!-                ignd = NSL
-!-            else
-!-                ignd = 3
-!-            end if
-!-            write(cfmt, '(i3)') ignd
-!-            write(ECHO_TXT_IUN, *)
-!-            write(ECHO_TXT_IUN, '(a)') 'End of run prognostic states'
-!-            write(ECHO_TXT_IUN, '(3x, (a), i4)') 'Number of GRUs: ', NTYPE
-!-            do i = 1, 3
-!-                write(ECHO_TXT_IUN, *)
-!-                select case (i)
-!-                    case (1); write(ECHO_TXT_IUN, '(a)') 'Average values'
-!-                    case (2); write(ECHO_TXT_IUN, '(a)') 'Minimum values'
-!-                    case (3); write(ECHO_TXT_IUN, '(a)') 'Maximum values'
-!-                end select
-!-                do m = 1, NTYPE
-!-                    write(ECHO_TXT_IUN, "(3x, 'GRU ', i3, ':')") m
-!-                    cfmtt = "(" // trim(adjustl(cfmt)) // "(f10.3), 3(f10.3), " // &
-!-                            "2x, '!> TBAR(1:" // trim(adjustl(cfmt)) // ")/TCAN/TSNO/TPND')"
-!-                    write(ECHO_TXT_IUN, cfmtt) ((tbar(i, m, j) - 273.16), j = 1, ignd), &
-!-                        (tcan(i, m) - 273.16), (tsno(i, m) - 273.16), (tpnd(i, m) - 273.16)
-!-                    cfmtt = "(" // trim(adjustl(cfmt)) // "(f10.3), " // trim(adjustl(cfmt)) // "(f10.3), f10.3, " // &
-!-                            "2x, '!> THLQ(1:" // trim(adjustl(cfmt)) // ")/THIC(1:" // trim(adjustl(cfmt)) // ")/ZPND')"
-!-                    write(ECHO_TXT_IUN, cfmtt) (thlq(i, m, j), j = 1, ignd), (thic(i, m, j), j = 1, ignd), zpnd(i, m)
-!-                    write(ECHO_TXT_IUN, "(6(f10.3), 2x, '!> RCAN/SNCAN/SNO/ALBS/RHOS/GRO')") &
-!-                        rcan(i, m), sncan(i, m), sno(i, m), albs(i, m), rhos(i, m), gro(i, m)
-!-                end do
-!-            end do
+        !> Write to file.
+        !-            if (NRSOILAYEREADFLAG > 3) then
+        !-                ignd = min(NRSOILAYEREADFLAG, NSL)
+        !-            else if (NRSOILAYEREADFLAG == 1) then
+        !-                ignd = NSL
+        !-            else
+        !-                ignd = 3
+        !-            end if
+        !-            write(cfmt, '(i3)') ignd
+        !-            write(ECHO_TXT_IUN, *)
+        !-            write(ECHO_TXT_IUN, '(a)') 'End of run prognostic states'
+        !-            write(ECHO_TXT_IUN, '(3x, (a), i4)') 'Number of GRUs: ', NTYPE
+        !-            do i = 1, 3
+        !-                write(ECHO_TXT_IUN, *)
+        !-                select case (i)
+        !-                    case (1); write(ECHO_TXT_IUN, '(a)') 'Average values'
+        !-                    case (2); write(ECHO_TXT_IUN, '(a)') 'Minimum values'
+        !-                    case (3); write(ECHO_TXT_IUN, '(a)') 'Maximum values'
+        !-                end select
+        !-                do m = 1, NTYPE
+        !-                    write(ECHO_TXT_IUN, "(3x, 'GRU ', i3, ':')") m
+        !-                    cfmtt = "(" // trim(adjustl(cfmt)) // "(f10.3), 3(f10.3), " // &
+        !-                            "2x, '!> TBAR(1:" // trim(adjustl(cfmt)) // ")/TCAN/TSNO/TPND')"
+        !-                    write(ECHO_TXT_IUN, cfmtt) ((tbar(i, m, j) - 273.16), j = 1, ignd), &
+        !-                        (tcan(i, m) - 273.16), (tsno(i, m) - 273.16), (tpnd(i, m) - 273.16)
+        !-                    cfmtt = "(" // trim(adjustl(cfmt)) // "(f10.3), " // trim(adjustl(cfmt)) // "(f10.3), f10.3, " // &
+        !-                            "2x, '!> THLQ(1:" // trim(adjustl(cfmt)) // ")/THIC(1:" // trim(adjustl(cfmt)) // ")/ZPND')"
+        !-                    write(ECHO_TXT_IUN, cfmtt) (thlq(i, m, j), j = 1, ignd), (thic(i, m, j), j = 1, ignd), zpnd(i, m)
+        !-                    write(ECHO_TXT_IUN, "(6(f10.3), 2x, '!> RCAN/SNCAN/SNO/ALBS/RHOS/GRO')") &
+        !-                        rcan(i, m), sncan(i, m), sno(i, m), albs(i, m), rhos(i, m), gro(i, m)
+        !-                end do
+        !-            end do
 
-!-        end if
+        !-        end if
 
     end if
 
