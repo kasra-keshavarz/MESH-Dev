@@ -74,8 +74,8 @@ endif
 # However, if the netCDF library is installed,
 # 'nf-config' should be installed as well.
 ifeq ($(filter netcdf,$(MAKECMDGOALS)),netcdf)
-LIBNCO=$(shell nf-config --fflags) -DNETCDF
-LIBNCL=$(shell nf-config --flibs)
+LIBNCO=-I$(shell pkgconf --variable=includedir netcdf-fortran) -I$(shell pkgconf --variable=includedir netcdf) -DNETCDF -DNETCDFF 
+LIBNCL=-L$(shell pkgconf --variable=libdir netcdf-fortran) -L$(shell pkgconf --variable=libdir netcdf) -lnetcdff -lnetcdf
 endif
 
 # ======================================================================
